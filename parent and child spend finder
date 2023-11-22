@@ -1,0 +1,48 @@
+import pandas as pd
+from tabulate import tabulate
+
+# Read the parent-child mapping data
+mapping_file_path = "paras-parent-child-info.csv"  # Replace with your file path
+parent_child_mapping = pd.read_csv(mapping_file_path)
+
+# Read the detailed information file with multiple sheets
+detailed_info_file_path = "Sponsored Products Advertised product report.xlsx"  # Replace with your file path
+try:
+    xls = pd.ExcelFile(detailed_info_file_path)
+except FileNotFoundError as e:
+    print(f"File not found error: {e}")
+    exit()
+
+# Input the parent ID from the command line
+parent_id_input = input("Enter the Parent ID: ")
+
+# Check if Parent ID exists in 'Sheet1'
+filtered_mapping = parent_child_mapping[parent_child_mapping['parentproductid'] == parent_id_input]
+if filtered_mapping.empty:
+    print("Parent ID not found in the mapping file.")
+    exit()
+
+# Get child IDs associated with the provided parent ID
+child_ids = filtered_mapping['productid'].tolist()
+
+# Check for 'ASIN' column in 'Sheet1'
+sheet1_name = xls.sheet_names[0]  # Assuming the first sheet, change the index if needed
+if sheet1_name in xls.sheet_names:
+    try:
+        sheet1_data = pd.read_excel(detailed_info_file_path, sheet1_name, engine='openpyxl')
+        if 'ASIN' not in sheet1_data.columns:
+            print(f"'ASIN' column not found in sheet '{sheet1_name}'.")
+        else:
+            # Filter rows in Sheet1 based on child IDs
+            filtered_sheet1_data = sheet1_data[sheet1_data['ASIN'].isin(child_ids)]
+
+            # Check if any data exists for the provided Parent ID in Sheet1
+            if filtered_sheet1_data.empty:
+                print("No matching data found in Sheet1 for the provided Parent ID.")
+            else:
+                # Display the filtered data from Sheet1 in a tabular format
+                print(tabulate(filtered_sheet1_data, headers='keys', tablefmt='pretty'))
+    except Exception as e:
+        print(f"Error processing sheet '{sheet1_name}': {e}")
+else:
+    print(f"Sheet '{sheet1_name}' not found in the Excel file.")

@@ -1,5 +1,4 @@
 import pandas as pd
-from tabulate import tabulate
 
 # Read the parent-child mapping data
 mapping_file_path = "paras-parent-child-info.csv"  # Replace with your file path
@@ -40,9 +39,12 @@ if sheet1_name in xls.sheet_names:
             if filtered_sheet1_data.empty:
                 print("No matching data found in Sheet1 for the provided Parent ID.")
             else:
-                # Display the filtered data from Sheet1 in a tabular format
-                print(tabulate(filtered_sheet1_data, headers='keys', tablefmt='pretty'))
+                # Save the filtered data from Sheet1 into an Excel file
+                output_file_name = f"Filtered_Data_{parent_id_input}.xlsx"
+                filtered_sheet1_data.to_excel(output_file_name, index=False)
+                print(f"Filtered data saved to '{output_file_name}'")
     except Exception as e:
         print(f"Error processing sheet '{sheet1_name}': {e}")
 else:
     print(f"Sheet '{sheet1_name}' not found in the Excel file.")
+

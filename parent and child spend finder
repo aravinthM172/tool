@@ -1,4 +1,5 @@
 import pandas as pd
+from tqdm import tqdm
 
 # Read the parent-child mapping data
 mapping_file_path = "paras-parent-child-info.csv"  # Replace with your file path
@@ -12,39 +13,50 @@ except FileNotFoundError as e:
     print(f"File not found error: {e}")
     exit()
 
-# Input the parent ID from the command line
-parent_id_input = input("Enter the Parent ID: ")
+# Read the IDs from the Excel file
+filepath = "Profit-2023-11-22T11_30_54.490Z.xlsx"
+df = pd.read_excel(filepath, skiprows=1)
 
-# Check if Parent ID exists in 'Sheet1'
-filtered_mapping = parent_child_mapping[parent_child_mapping['parentproductid'] == parent_id_input]
-if filtered_mapping.empty:
-    print("Parent ID not found in the mapping file.")
-    exit()
+# Initialize an empty DataFrame to accumulate the filtered data
+combined_filtered_data = pd.DataFrame()
 
-# Get child IDs associated with the provided parent ID
-child_ids = filtered_mapping['productid'].tolist()
+for id in tqdm(df['Ids'], desc="Processing IDs"):
+    # Check if Parent ID exists in 'paras-parent-child-info.csv'
+    filtered_mapping = parent_child_mapping[parent_child_mapping['parentproductid'] == id]
+    if filtered_mapping.empty:
+        print(f"Parent ID {id} not found in the mapping file.")
+        continue
 
-# Check for 'ASIN' column in 'Sheet1'
-sheet1_name = xls.sheet_names[0]  # Assuming the first sheet, change the index if needed
-if sheet1_name in xls.sheet_names:
-    try:
-        sheet1_data = pd.read_excel(detailed_info_file_path, sheet1_name, engine='openpyxl')
-        if 'ASIN' not in sheet1_data.columns:
-            print(f"'ASIN' column not found in sheet '{sheet1_name}'.")
-        else:
-            # Filter rows in Sheet1 based on child IDs
-            filtered_sheet1_data = sheet1_data[sheet1_data['ASIN'].isin(child_ids)]
+    # Get child IDs associated with the provided parent ID
+    child_ids = filtered_mapping['productid'].tolist()
 
-            # Check if any data exists for the provided Parent ID in Sheet1
-            if filtered_sheet1_data.empty:
-                print("No matching data found in Sheet1 for the provided Parent ID.")
-            else:
-                # Save the filtered data from Sheet1 into an Excel file
-                output_file_name = f"Filtered_Data_{parent_id_input}.xlsx"
-                filtered_sheet1_data.to_excel(output_file_name, index=False)
-                print(f"Filtered data saved to '{output_file_name}'")
-    except Exception as e:
-        print(f"Error processing sheet '{sheet1_name}': {e}")
-else:
-    print(f"Sheet '{sheet1_name}' not found in the Excel file.")
+    # Create a DataFrame to store data for the current ID
+    current_id_data = pd.DataFrame()
 
+    # Iterate through sheets and retrieve data for the current ID
+    for sheet_name in xls.sheet_names:
+        try:
+            sheet_data = pd.read_excel(detailed_info_file_path, sheet_name, engine='openpyxl')
+            if 'ASIN' in sheet_data.columns:
+                filtered_sheet_data = sheet_data[
+                    (sheet_data['ASIN'].isin(child_ids)) & (~sheet_data['ASIN'].isnull())
+                ]
+
+                if not filtered_sheet_data.empty:
+                    # Append the filtered data to the DataFrame for the current ID
+                    current_id_data = pd.concat([current_id_data, filtered_sheet_data])
+        except Exception as e:
+            print(f"Error processing sheet '{sheet_name}' for Parent ID {id}: {e}")
+
+    if not current_id_data.empty:
+        # Add a new column 'Parent ID' with the current Parent ID
+        current_id_data['Parent ID'] = id
+        combined_filtered_data = pd.concat([combined_filtered_data, current_id_data])
+
+# Add a new column 'Link' with the link constructed using 'https://www.amazon.in/dp/' and the IDs
+combined_filtered_data['Link'] = 'https://www.amazon.in/dp/' + combined_filtered_data['ASIN']
+
+# Save the accumulated filtered data with the 'Link' and 'Parent ID' columns into a single Excel file
+output_file_path = "Combined_Filtered_Data_With_Link_ParentID14.xlsx"
+combined_filtered_data.to_excel(output_file_path, index=False, engine='openpyxl')
+print(f"Combined filtered data with links and parent IDs saved to '{output_file_path}'")

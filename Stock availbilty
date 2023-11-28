@@ -1,0 +1,56 @@
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+from tqdm import tqdm
+import time
+
+# Read the Excel file
+file_path = "stock1.xlsx"  # Replace with your file path
+data = pd.read_excel(file_path)
+
+# User agent to mimic a web browser request
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.45 Safari/537.36"
+}
+
+def check_availability(url):
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        soup = BeautifulSoup(response.content, "html.parser")
+        # Amazon availability
+        if "amazon" in url:
+            availability = soup.find(id="availability")
+            if availability:
+                status = availability.get_text().strip()
+                return status
+            else:
+                return "Information not found"
+        # Flipkart availability
+        elif "flipkart" in url:
+            availability = soup.find(class_="_16FRp0")
+            if availability:
+                status = availability.get_text().strip()
+                return status
+            else:
+                return "Information not found"
+        else:
+            return "Unsupported URL"
+    else:
+        return "Failed to fetch the page."
+
+# Check availability for each product link in the 'Link' column
+availability_list = []
+with tqdm(total=len(data['Link']), desc="Fetching Availability", unit="links", bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt}") as pbar:
+    for link in data['Link']:
+        time.sleep(0.5)  # Simulating processing time
+        availability = check_availability(link)
+        availability_list.append(availability)
+        pbar.update(1)
+
+# Add availability to the DataFrame
+data['Availability'] = availability_list
+
+# Save the DataFrame with availability information to a new Excel file
+output_file_path = "product_availability.xlsx"  # Output file name
+data.to_excel(output_file_path, index=False)
+print(f"Product availability data saved to '{output_file_path}'")

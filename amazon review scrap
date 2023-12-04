@@ -1,0 +1,65 @@
+import requests
+from bs4 import BeautifulSoup
+import pandas as pd
+from tqdm import tqdm
+
+def fetch_all_reviews(asin, amazon_cookie):
+    base_url = f"https://www.amazon.in/product-reviews/{asin}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.45 Safari/537.36",
+        "Cookie": amazon_cookie
+    }
+
+    all_reviews_data = []
+    has_next_page = True
+    page_number = 1
+
+    while has_next_page:
+        url = f"{base_url}?pageNumber={page_number}&reviewerType=all_reviews&formatType=current_format&&sortBy=recent"
+        response = requests.get(url, headers=headers)
+
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            review_blocks = soup.find_all('div', {'data-hook': 'review'})
+
+            if not review_blocks:
+                break  # No more reviews found, exit the loop
+
+            for review_block in tqdm(review_blocks, desc=f"Fetching Reviews - Page {page_number}"):
+                review_text = review_block.find('span', {'data-hook': 'review-body'}).text.strip()
+                review_date = review_block.find('span', {'data-hook': 'review-date'}).text.strip()
+
+                review_info = {
+                    "ASIN": asin,
+                    "Review Date": review_date,
+                    "Review Text": review_text
+                    # Add more data as needed
+                }
+                all_reviews_data.append(review_info)
+
+            # Check if there is a next page
+            next_button = soup.find('li', {'class': 'a-last'})
+            if not next_button or 'a-disabled' in next_button.get('class', []):
+                has_next_page = False
+            else:
+                page_number += 1
+        else:
+            print(f"Failed to fetch reviews for page {page_number}")
+            break
+
+    return all_reviews_data
+
+# Input ASIN (Amazon Standard Identification Number)
+input_asin = "B086CP9HXK"  # Replace this with your ASIN
+
+# Amazon cookie (if needed)
+amazon_cookie = "Your_Amazon_Cookie_Value_Here"  # Replace this with your Amazon cookie value
+
+# Fetch all reviews for the specified ASIN
+reviews_data = fetch_all_reviews(input_asin, amazon_cookie)
+
+if reviews_data:
+    # Create a DataFrame from the reviews data
+    reviews_df = pd.DataFrame(reviews_data)
+    # Save the DataFrame to an Excel file
+    reviews_df.to_excel("output_all_reviews7.xlsx", index=False)

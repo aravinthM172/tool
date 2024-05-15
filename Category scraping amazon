@@ -1,0 +1,111 @@
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+from tqdm import tqdm
+from twocaptcha import TwoCaptcha
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.chrome.service import Service
+from time import sleep
+
+# User agent to mimic a web browser request
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.45 Safari/537.36"
+}
+
+# Replace YOUR_2CAPTCHA_API_KEY with your actual 2Captcha API key
+API_KEY = 'b071ecf83306c99a7edc8530448b6097'
+solver = TwoCaptcha(API_KEY)
+
+# Function to solve CAPTCHA using 2Captcha
+def solve_captcha(driver):
+    captcha_image_url = driver.find_element(By.XPATH,
+                                            '/html/body/div/div[1]/div[3]/div/div/form/div[1]/div/div/div[1]/img').get_attribute(
+        'src')
+    captcha_token = solver.normal(captcha_image_url)
+    print(f"Captcha Token: {captcha_token['code']}")
+    captcha_entry_field = driver.find_element(By.ID, 'captchacharacters')
+    captcha_entry_field.send_keys(captcha_token['code'])
+    submit_button = driver.find_element(By.XPATH,
+                                        '/html/body/div/div[1]/div[3]/div/div/form/div[2]/div/span/span/button')
+    submit_button.click()
+    sleep(2)
+
+# Function to scrape category from Amazon product page
+def scrape_amazon_category(url, max_retries=3, initial_wait_time=5):
+    retries = 0
+    while retries < max_retries:
+        try:
+            driver.get(url)
+            if retries > 0:
+                wait_time = initial_wait_time * (2 ** (retries - 1))
+                print(f"Waiting for {wait_time} seconds before retrying...")
+                sleep(wait_time)
+
+            # Handle CAPTCHA if present
+            captcha = driver.find_elements(By.XPATH, '/html/body/div/div[1]/div[3]/div/div/form')
+            if len(captcha) > 0:
+                driver.save_screenshot('captcha.png')
+                solve_captcha(driver)
+
+            # Retrieve the page content and parse it
+            page_source = driver.page_source
+            soup = BeautifulSoup(page_source, 'html.parser')
+
+            # Find the category from breadcrumbs
+            breadcrumbs = soup.find('div', id='wayfinding-breadcrumbs_container')
+            if breadcrumbs:
+                categories = breadcrumbs.find_all('a')
+                if categories:
+                    # The last category in the breadcrumbs is usually the product category
+                    category = categories[-1].get_text(strip=True)
+                    return category
+                else:
+                    print(f"No categories found in breadcrumbs for URL: {url}")
+                    return "No categories found"
+            else:
+                print(f"Breadcrumbs not found on the page for URL: {url}")
+                return "Breadcrumbs not found"
+        except Exception as e:
+            print(f"Error: {e}")
+            retries += 1
+            print(f"Retrying ({retries}/{max_retries})...")
+
+    return "Failed to fetch the page."
+
+# Read URLs from Excel file
+file_path = "link.xlsx"  # Replace with your file path
+df = pd.read_excel(file_path)
+urls = df["Link"]
+
+# Configure Chrome WebDriver
+chrome_options = webdriver.ChromeOptions()
+chrome_options.add_argument('--headless')  # Run headless if needed
+chrome_options.add_argument(f'user-agent={headers["User-Agent"]}')
+chrome_options.add_argument('--no-sandbox')
+chrome_options.add_argument('--disable-dev-shm-usage')
+chrome_options.add_argument('--disable-gpu')
+
+driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+
+# Scrape categories for each URL with progress bar
+categories = []
+with tqdm(total=len(urls), desc="Scraping Categories", unit="links", bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt}") as pbar:
+    for url in urls:
+        category = scrape_amazon_category(url)
+        categories.append(category)
+        pbar.update(1)
+
+driver.quit()  # Close the WebDriver
+
+# Add categories to DataFrame
+df["Category"] = categories
+
+# Save DataFrame to Excel file
+output_file_path = "output_categories.xlsx"
+df.to_excel(output_file_path, index=False)
+print(f"Categories scraped and saved to '{output_file_path}'")
+
+# Optionally print out the first few entries to verify
+print(df.head())
